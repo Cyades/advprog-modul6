@@ -42,4 +42,78 @@
    Secara keseluruhan, baris-baris ini melengkapi fungsionalitas server HTTP sederhana dengan mengirimkan file HTML sebagai respons terhadap setiap permintaan yang diterima.
 
    ![](/assets/images/commit2.png)
+
+## Commit 3 Reflection notes
+
+3. How to split between response and why the refactoring is needed
+
+   Pada kode ini, pembuatan respons HTTP telah dipisahkan dari method `handle_connection` ke dalam method `response` tersendiri. Berikut proses pemisahan fungsi respons:
    
+   - Method `response` baru menerima parameter `request_line` (baris pertama dari permintaan HTTP)
+   - Method ini mengembalikan String yang berisi respons HTTP lengkap
+   - Di dalam method `response`:
+     * Dilakukan pengecekan apakah request merupakan "GET / HTTP/1.1"
+     * Berdasarkan kondisi tersebut, status line dan filename yang berbeda ditentukan (200 OK atau 404 NOT FOUND)
+     * File HTML dibaca dan disiapkan sebagai konten respons
+     * Respons HTTP lengkap diformat dan dikembalikan ke pemanggil
+   
+   Alasan diperlukan refactoring:
+   
+   1. **Separation of Concerns (Pemisahan Tanggung Jawab)** - Method `handle_connection` sekarang berfokus hanya pada manajemen koneksi, sementara `response` menangani pembuatan format respons
+   
+   2. **Maintainability (Kemudahan Perawatan)** - Dengan memisahkan logika, kode menjadi lebih mudah dipahami dan dimodifikasi
+   
+   3. **Testability (Kemudahan Pengujian)** - Function `response` dapat diuji secara terpisah tanpa harus membuat koneksi TCP
+   
+   4. **Reusability (Dapat Digunakan Kembali)** - Function `response` dapat dipanggil dari berbagai tempat dalam kode jika diperlukan
+   
+   5. **Flexibility (Fleksibilitas)** - Memudahkan untuk menambahkan kemampuan routing dan jenis respons yang berbeda di masa depan
+   
+   Refactoring ini merupakan implementasi dari prinsip "Single Responsibility Principle" di mana setiap fungsi hanya memiliki satu tanggung jawab utama.
+
+    ### Menambahkan page 404.html
+    ```html
+      <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8"> <title>Oops!</title>
+    </head> 
+    <body> 
+        <h1>Oops!</h1> 
+        <p>Sorry, I don't know what you're asking for.</p>
+        <p>Rust is running from malvinscafi's machine.</p>
+    </body>
+    </html>
+    ```
+    ### Mengubah `handle_connection` dan menambahkan `response`
+    ```rust
+    fn handle_connection(mut stream:TcpStream){
+        let buf_reader = BufReader::new(&mut stream);
+        let http_request:Vec<_> = buf_reader
+        .lines()
+        .map(|result|result.unwrap())
+        .take_while(|line|!line.is_empty()) 
+        .collect();
+
+        if http_request.is_empty(){
+            return;
+        }
+        let request_line = http_request.get(0).unwrap();
+        let response = response(request_line);
+        stream.write_all(response.as_bytes()).unwrap();
+    }
+
+    fn response(request_line: &str) -> String {
+        let get = "GET / HTTP/1.1"; 
+        let (status_line, filename) = if request_line == get {
+            ("HTTP/1.1 200 OK", "hello.html")
+        } else {
+            ("HTTP/1.1 404 NOT FOUND", "404.html")
+        };
+        let contents = fs::read_to_string(filename).unwrap();
+        let length = contents.len();
+        format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}",)
+    }
+    ```
+
+    ![](/assets/images/commit3.png)

@@ -23,3 +23,23 @@
    
    Pada dasarnya, method ini membaca dan menampilkan header-header HTTP yang diterima dari koneksi TCP.
 
+## Commit 2 Reflection notes
+
+2. What does the additional lines of code in `handle_connection` do?
+
+   Baris-baris kode tambahan pada method `handle_connection` berfungsi untuk membangun dan mengirimkan respons HTTP ke klien. Berikut adalah detail fungsinya:
+   
+   - `let status_line = "HTTP/1.1 200 OK";` - Membuat baris status HTTP yang menandakan respons sukses (kode 200)
+   - `let contents = fs::read_to_string("hello.html").unwrap();` - Membaca konten dari file "hello.html" dan menyimpannya sebagai string
+   - `let length = contents.len();` - Menghitung panjang konten file dalam byte
+   - Blok `format!()` - Menggabungkan semua elemen respons HTTP:
+     * Baris status
+     * Header Content-Length dengan ukuran file
+     * Dua sequence CRLF (`\r\n\r\n`) untuk memisahkan header dan body
+     * Konten file sebagai body respons
+   - `stream.write_all(response.as_bytes()).unwrap();` - Menulis respons HTTP yang sudah diformat ke stream TCP untuk dikirim ke klien
+   
+   Secara keseluruhan, baris-baris ini melengkapi fungsionalitas server HTTP sederhana dengan mengirimkan file HTML sebagai respons terhadap setiap permintaan yang diterima.
+
+   ![](/assets/images/commit2.png)
+   

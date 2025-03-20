@@ -314,3 +314,106 @@
     4. **Message Passing:** Menggunakan channel untuk komunikasi antar thread daripada shared state
 
     Implementasi ThreadPool ini menunjukkan bagaimana server web dapat menangani permintaan secara konkuren tanpa memblokir seluruh server, meningkatkan throughput dan responsivitas server secara signifikan.
+
+
+## Commit Bonus Reflection notes
+
+Bonus. Try to create a function build as a replacement to new and compare. 
+  
+  Saya mengimplementasikan pola desain Builder untuk `ThreadPool` sebagai alternatif yang lebih fleksibel dari constructor sederhana.
+
+   #### Struktur ThreadPoolBuilder
+   ```rust
+   pub struct ThreadPoolBuilder {
+       size: Option<usize>,
+       name_prefix: Option<String>,
+   }
+   ```
+
+   #### Implementasi ThreadPoolBuilder
+   ```rust
+   impl ThreadPoolBuilder {
+       pub fn new() -> Self {
+           ThreadPoolBuilder {
+               size: None,
+               name_prefix: Some("worker".to_string()),
+           }
+       }
+
+       pub fn size(mut self, size: usize) -> Self {
+           self.size = Some(size);
+           self
+       }
+
+       pub fn name_prefix(mut self, prefix: String) -> Self {
+           self.name_prefix = Some(prefix);
+           self
+       }
+
+       pub fn build(self) -> Result<ThreadPool, &'static str> {
+           let size = match self.size {
+               Some(s) if s > 0 => s,
+               Some(_) => return Err("Thread pool size must be greater than zero"),
+               None => return Err("Thread pool size must be specified"),
+           };
+
+           let prefix = self.name_prefix.unwrap_or_else(|| "worker".to_string());
+           
+           let (sender, receiver) = mpsc::channel();
+           let receiver = Arc::new(Mutex::new(receiver));
+           let mut workers = Vec::with_capacity(size);
+           
+           for id in 0..size {
+               workers.push(Worker::new(id, Arc::clone(&receiver), format!("{}-{}", prefix, id)));
+           }
+
+           Ok(ThreadPool { workers, sender })
+       }
+   }
+   ```
+
+   #### Perubahan pada Worker
+   ```rust
+   fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>, name: String) -> Worker {
+       let thread = thread::spawn(move || loop {
+           let job = receiver.lock().unwrap().recv().unwrap();
+           println!("{} got a job; executing.", name);
+           job();
+       });
+       Worker { id, thread }
+   }
+   ```
+
+   #### Penggunaan dalam main.rs
+   ```rust
+   // Menggunakan pola builder
+   let pool = ThreadPoolBuilder::new()
+       .size(4)
+       .name_prefix("server-worker".to_string())
+       .build()
+       .expect("Failed to build thread pool");
+   ```
+
+   ### Perbandingan dengan Implementasi Sebelumnya
+
+   | Fitur | ThreadPool::new | ThreadPoolBuilder |
+   |-------|----------------|-------------------|
+   | Sintaks | Sederhana | Lebih ekspresif |
+   | Konfigurasi | Hanya ukuran pool | Ukuran pool dan nama worker |
+   | Error Handling | Panic dengan assert! | Result yang bisa ditangani |
+   | Nilai Default | Tidak ada | Dapat menyediakan default |
+   | Ekstensi API | Sulit | Mudah diperluas |
+
+   ### Keuntungan Pola Builder
+
+   1. **Fleksibilitas:** Memungkinkan konfigurasi ThreadPool yang lebih detail dan dapat diperluas di masa depan.
+   
+   2. **Penanganan Error yang Lebih Baik:** Menggunakan Result daripada panic, memberikan kontrol lebih kepada pemanggil.
+   
+   3. **Expressiveness:** Kode menjadi lebih ekspresif dan self-documenting dengan method chaining.
+   
+   4. **Kompatibilitas:** Mempertahankan metode original untuk backward compatibility sambil menambahkan API baru.
+   
+   5. **Extensibility:** Mudah menambahkan opsi konfigurasi baru tanpa merusak API yang sudah ada.
+
+   Pola builder merupakan praktik umum dalam Rust untuk tipe yang memerlukan konfigurasi kompleks, dan mencerminkan prinsip Open-Closed dari SOLID, di mana kode terbuka untuk ekstensi namun tertutup untuk modifikasi.

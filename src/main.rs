@@ -10,7 +10,12 @@ use hello::ThreadPool;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let pool = ThreadPool::new(4)   ;
+    // Using the full builder pattern with custom configuration
+    let pool = ThreadPoolBuilder::new()
+        .size(4)
+        .name_prefix("server-worker".to_string())
+        .build()
+        .expect("Failed to build thread pool");
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         pool.execute(|| {

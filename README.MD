@@ -210,3 +210,107 @@
 
    Secara keseluruhan, perubahan ini mempersiapkan codebase untuk demonstrasi kebutuhan multithreading dalam server web, karena menunjukkan bagaimana permintaan lambat dapat memblokir seluruh server.
 
+## Commit 5 Reflection notes
+
+5. Try to understand how the ThreadPool works.
+
+   ### Implementasi ThreadPool
+
+   `ThreadPool` diimplementasikan untuk menangani koneksi HTTP secara konkuren. Berikut adalah isi implementasinya:
+
+   #### Struktur ThreadPool
+   ```rust
+   pub struct ThreadPool {
+       workers: Vec<Worker>,
+       sender: mpsc::Sender<Job>,
+   }
+
+   type Job = Box<dyn FnOnce() + Send + 'static>;
+   ```
+   Di mana:
+
+    - `workers`: Vektor yang berisi thread pekerja
+    - `sender`: Channel untuk mengirim pekerjaan ke thread pekerja
+    - `Job`: Tipe yang mendefinisikan pekerjaan sebagai closure yang bisa dijalankan sekali dan dapat dikirim antar thread
+
+    #### Constructor ThreadPool
+
+    ```rust
+    pub fn new(size: usize) -> ThreadPool {
+        assert!(size > 0);
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let mut workers = Vec::with_capacity(size);
+        for id in 0..size {
+            workers.push(Worker::new(id, Arc::clone(&receiver)));
+        }
+
+        ThreadPool { workers, sender }
+    }
+    ```
+
+    #### Worker
+
+    ```rust
+    struct Worker {
+        id: usize,
+        thread: thread::JoinHandle<()>,
+    }
+
+    impl Worker {
+        fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+            let thread = thread::spawn(move || loop {
+                let job = receiver.lock().unwrap().recv().unwrap();
+                println!("Worker {id} got a job; executing.");
+                job();
+            });
+            Worker { id, thread }
+        }
+    }
+    ```
+
+    #### Penggunaan ThreadPool dalam Server
+
+    ```rust
+    fn main() {
+        let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+        let pool = ThreadPool::new(4);
+        for stream in listener.incoming() {
+            let stream = stream.unwrap();
+            pool.execute(|| {
+                handle_connection(stream);
+            });
+        }
+    }
+    ```
+
+    #### Cara Kerja dan Keuntungan
+
+    1. **Pemrosesan Konkuren:**
+      - Server membuat pool dengan 4 thread pekerja
+      - Setiap koneksi masuk ditangani oleh salah satu thread dari pool
+      - Meskipun satu koneksi (/sleep) membutuhkan waktu 10 detik, koneksi lain tetap dapat diproses oleh thread lain yang tersedia
+
+    2. **Penggunaan Pola Desain Thread Pool:**
+      - Menghindari overhead pembuatan thread baru untuk setiap koneksi
+      - Membatasi jumlah thread yang berjalan bersamaan (4 thread) untuk mencegah resource exhaustion
+      - Menggunakan channel (MPSC - Multiple Producer, Single Consumer) untuk koordinasi pekerjaan
+
+    3. **Komunikasi Antar Thread:**
+      - `Arc` (Atomic Reference Counting) digunakan untuk berbagi receiver channel antar thread
+      - `Mutex` digunakan untuk memastikan hanya satu thread yang mengakses receiver pada satu waktu
+      - Channel MPSC memungkinkan semua thread bisa mengirim pekerjaan, dan thread pekerja bisa menerima pekerjaan
+
+    4. **Solusi untuk Masalah Blocking:**
+      - Pada commit sebelumnya, endpoint `/sleep` memblokir seluruh server selama 10 detik
+      - Dengan ThreadPool, hanya satu dari empat thread yang terblokir saat menangani `/sleep`
+      - Server tetap responsif untuk menangani permintaan lain melalui thread yang tersisa
+
+    #### Prinsip Pemrograman yang Diterapkan
+
+    1. **Concurrent Programming:** Menggunakan beberapa thread untuk menjalankan tugas secara bersamaan
+    2. **Thread Safety:** Penggunaan `Arc`, `Mutex`, dan channel untuk komunikasi aman antar thread
+    3. **Resource Management:** Membatasi jumlah thread untuk efisiensi penggunaan sumber daya
+    4. **Message Passing:** Menggunakan channel untuk komunikasi antar thread daripada shared state
+
+    Implementasi ThreadPool ini menunjukkan bagaimana server web dapat menangani permintaan secara konkuren tanpa memblokir seluruh server, meningkatkan throughput dan responsivitas server secara signifikan.

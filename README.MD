@@ -116,4 +116,97 @@
     }
     ```
 
-    ![](/assets/images/commit3.png)
+   ![](/assets/images/commit3.png)
+
+## Commit 4 Reflection notes
+
+4. See how it works and try to understand why it works like that. 
+
+   ### 1. **Penambahan Import untuk Fungsionalitas Sleep**
+   - **Sebelum:** Hanya mengimport library dasar (`fs`, `io`, `net`)
+     ```rust
+     use std::{
+         fs,
+         io::{prelude::*,BufReader},
+         net::{TcpListener, TcpStream},
+     };
+     ```
+   - **Sesudah:** Menambahkan import untuk `thread` dan `time::Duration`
+     ```rust
+     use std::{
+         fs,
+         io::{prelude::*, BufReader},
+         net::{TcpListener, TcpStream},
+         thread,               // Baru
+         time::Duration,       // Baru
+     };
+     ```
+
+   ### 2. **Perubahan Pemrosesan HTTP Request**
+   - **Sebelum:** Membaca seluruh header HTTP request ke dalam vector
+     ```rust
+     let http_request:Vec<_> = buf_reader
+         .lines()
+         .map(|result|result.unwrap())
+         .take_while(|line|!line.is_empty()) 
+         .collect();
+     ```
+   - **Sesudah:** Hanya membaca baris pertama (request line) dari HTTP request
+     ```rust
+     let request_line = buf_reader.lines().next().unwrap().unwrap();
+     ```
+
+   ### 3. **Perubahan Mekanisme Routing**
+   - **Sebelum:** Menggunakan kondisi if-else sederhana
+     ```rust
+     let get = "GET / HTTP/1.1"; 
+     let (status_line, filename) = if request_line == get {
+         ("HTTP/1.1 200 OK", "hello.html")
+     } else {
+         ("HTTP/1.1 404 NOT FOUND", "404.html")
+     };
+     ```
+   - **Sesudah:** Menggunakan pattern matching dengan `match` yang lebih fleksibel
+     ```rust
+     return match &request_line[..] {
+         "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
+         "GET /sleep HTTP/1.1" => {
+             thread::sleep(Duration::from_secs(10));
+             ("HTTP/1.1 200 OK", "hello.html")
+         }
+         _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+     };
+     ```
+
+   ### 4. **Penambahan Endpoint Sleep**
+   - **Sebelum:** Tidak ada endpoint yang mensimulasikan respons lambat
+   - **Sesudah:** Menambahkan endpoint `/sleep` yang menunda respons selama 10 detik
+     ```rust
+     "GET /sleep HTTP/1.1" => {
+         thread::sleep(Duration::from_secs(10));
+         ("HTTP/1.1 200 OK", "hello.html")
+     }
+     ```
+
+   ### 5. **Perubahan Nama dan Return Type Fungsi Respons**
+   - **Sebelum:** Fungsi bernama `response` yang mengembalikan `String`
+     ```rust
+     fn response(request_line: &str) -> String { ... }
+     ```
+   - **Sesudah:** Fungsi bernama `response` yang mengembalikan tuple `(&str, &str)`
+     ```rust
+     fn response(request_line: &str) -> (&str, &str) { ... }
+     ```
+
+   ### Alasan dan Dampak Perubahan:
+
+   1. **Demonstrasi Blocking:** Penambahan endpoint `/sleep` mendemonstrasikan bagaimana operasi yang lama pada satu koneksi dapat memblokir seluruh server, karena server berjalan dalam satu thread.
+
+   2. **Efisiensi Pemrosesan:** Kode baru hanya membaca baris pertama request HTTP (yang berisi method, path, dan versi), cukup untuk keperluan routing sederhana.
+
+   3. **Fleksibilitas Routing:** Penggunaan `match` memungkinkan penambahan endpoint baru dengan lebih mudah dan membuat kode lebih mudah dibaca untuk kasus kompleks.
+
+   4. **Pemisahan Tanggung Jawab:** Fungsi `response` lebih jelas menggambarkan tanggung jawabnya, yaitu hanya menentukan status dan file yang akan digunakan, tanpa memformat seluruh respons.
+
+   Secara keseluruhan, perubahan ini mempersiapkan codebase untuk demonstrasi kebutuhan multithreading dalam server web, karena menunjukkan bagaimana permintaan lambat dapat memblokir seluruh server.
+
